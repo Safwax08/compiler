@@ -48,18 +48,27 @@ function App() {
     startTime: 0
   });
 
+  // Debug logs state
+  const [logs, setLogs] = useState([]);
+  const addLog = (msg) => setLogs(prev => [msg, ...prev].slice(0, 20));
+
   useEffect(() => {
     socket.on('message', (message) => {
       console.log(message);
     });
 
+    socket.on('connect', () => addLog('Socket connected: ' + socket.id));
+    socket.on('connect_error', (e) => addLog('Socket error: ' + e.message));
+
     socket.on('user-joined', (userId) => {
+      addLog('User joined: ' + userId);
       console.log('User joined, initiating connection:', userId);
       // We are the initiator (existing user in room)
       createPeer(userId, socket.id, true);
     });
 
     socket.on('signal', ({ sender, signal }) => {
+      addLog('Signal received from: ' + sender);
       // Find existing peer or create new one
       const item = peersRef.current.find(p => p.peerId === sender);
       if (item) {
@@ -72,6 +81,8 @@ function App() {
     return () => {
       socket.off('user-joined');
       socket.off('signal');
+      socket.off('connect');
+      socket.off('connect_error');
     };
   }, []);
 
@@ -99,10 +110,12 @@ function App() {
     });
 
     peer.on('signal', (signal) => {
+      addLog('Sending signal to: ' + targetId);
       socket.emit('signal', { target: targetId, signal });
     });
 
     peer.on('connect', () => {
+      addLog('Peer connected!');
       console.log('Peer connected!');
       setConnectionState('connected');
     });
@@ -110,6 +123,7 @@ function App() {
     peer.on('data', handleData);
 
     peer.on('error', (err) => {
+      addLog('Peer error: ' + err.message);
       console.error('Peer error:', err);
       setConnectionState('error');
     });
@@ -345,75 +359,94 @@ function App() {
     }
   };
 
-  // Debug logs state
-  const [logs, setLogs] = useState([]);
-  const addLog = (msg) => setLogs(prev => [msg, ...prev].slice(0, 20));
+  return (
+    <div className="App">
+      <header>
+        <h1><Share2 color="#646cff" size={40} style={{ verticalAlign: 'middle', marginRight: '10px' }} /> GravityShare</h1>
+        <p>P2P Large File Transfer & Clipboard</p>
+      </header>
 
-  useEffect(() => {
-    socket.on('connect', () => addLog('Socket connected: ' + socket.id));
-    socket.on('connect_error', (e) => addLog('Socket error: ' + e.message));
-
-    socket.on('message', (message) => {
-      console.log(message);
-    });
-
-    socket.on('user-joined', (userId) => {
-      addLog('User joined: ' + userId);
-      console.log('User joined, initiating connection:', userId);
-      // We are the initiator (existing user in room)
-      createPeer(userId, socket.id, true);
-    });
-
-    socket.on('signal', ({ sender, signal }) => {
-      addLog('Signal received from: ' + sender);
-      // Find existing peer or create new one
-      const item = peersRef.current.find(p => p.peerId === sender);
-      if (item) {
-        item.peer.signal(signal);
-      } else {
-        createPeer(sender, socket.id, false, signal);
-      }
-    });
-
-    return () => {
-      socket.off('user-joined');
-      socket.off('signal');
-      socket.off('connect');
-      socket.off('connect_error');
-    };
-  }, []);
-
-  // ... (inside createPeer)
-  peer.on('signal', (signal) => {
-    addLog('Sending signal to: ' + targetId);
-    socket.emit('signal', { target: targetId, signal });
-  });
-
-  peer.on('connect', () => {
-    addLog('Peer connected!');
-    console.log('Peer connected!');
-    setConnectionState('connected');
-  });
-
-  peer.on('error', (err) => {
-    addLog('Peer error: ' + err.message);
-    console.error('Peer error:', err);
-    setConnectionState('error');
-  });
-
-  // ... (inside return JSX, append logs)
-  {
-    connectionState !== 'connected' && (
-      <div className="waiting-message">
-        <p>Share this Room ID with your peer.</p>
-        <div className="loader"></div>
-        <div style={{ marginTop: '20px', fontSize: '0.8rem', color: '#666', textAlign: 'left', background: '#111', padding: '10px', borderRadius: '5px' }}>
-          <strong>Debug Logs:</strong>
-          {logs.map((log, i) => <div key={i}>{log}</div>)}
+      {!isJoined ? (
+        <div className="card start-screen">
+          <div className="option">
+            <h2>Send Files</h2>
+            <button onClick={generateRoom}>Create Room</button>
+          </div>
+          <div className="divider">OR</div>
+          <div className="option">
+            <h2>Receive Files</h2>
+            <div className="join-input">
+              <input
+                type="text"
+                placeholder="Enter Room ID"
+                value={inputRoomId}
+                onChange={(e) => setInputRoomId(e.target.value)}
+              />
+              <button onClick={joinRoom}>Join</button>
+            </div>
+          </div>
         </div>
-      </div>
-    )
-  }
+      ) : (
+        <div className="room-view">
+          <div className="room-info">
+            <span>Room ID: <strong>{roomId}</strong></span>
+            <button className="icon-btn" onClick={copyToClipboard} title="Copy Room ID"><Copy size={18} /></button>
+            <span className={`status-badge ${connectionState}`}>
+              {connectionState === 'connected' ? 'Connected' : 'Waiting for peer...'}
+            </span>
+          </div>
+
+          {connectionState === 'connected' && (
+            <div className="split-view">
+              <div className="panel clipboard-panel">
+                <div className="panel-header">
+                  <h3><Copy size={20} /> Shared Clipboard</h3>
+                  <button className="small-btn" onClick={() => navigator.clipboard.writeText(clipboardText)}>Copy</button>
+                </div>
+                <textarea
+                  placeholder="Type here to share text instantly..."
+                  value={clipboardText}
+                  onChange={handleClipboardChange}
+                ></textarea>
+                <div className="clipboard-status">{uploadStatus}</div>
+              </div>
+
+              <div className="panel transfer-panel">
+                <div className="panel-header">
+                  <h3><Download size={20} /> File Transfer</h3>
+                </div>
+                <DropZone onFilesSelected={handleFilesSelected} />
+
+                <div className="file-list">
+                  {Object.entries(transfers).map(([name, stats]) => (
+                    <TransferProgress
+                      key={name}
+                      fileName={name}
+                      progress={stats.progress}
+                      speed={stats.speed}
+                      totalSize={(stats.total / 1024 / 1024).toFixed(1) + ' MB'}
+                      transferredSize={(stats.current / 1024 / 1024).toFixed(1) + ' MB'}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {connectionState !== 'connected' && (
+            <div className="waiting-message">
+              <p>Share this Room ID with your peer.</p>
+              <div className="loader"></div>
+              <div style={{ marginTop: '20px', fontSize: '0.8rem', color: '#666', textAlign: 'left', background: '#111', padding: '10px', borderRadius: '5px' }}>
+                <strong>Debug Logs:</strong>
+                {logs.length > 0 ? logs.map((log, i) => <div key={i}>{log}</div>) : <div>Waiting for logs...</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default App;
