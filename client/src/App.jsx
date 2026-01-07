@@ -11,7 +11,18 @@ import './App.css';
 import * as buffer from 'buffer';
 window.Buffer = buffer.Buffer;
 
-const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3000');
+const getServerUrl = () => {
+  if (import.meta.env.VITE_SERVER_URL) return import.meta.env.VITE_SERVER_URL;
+  if (window.location.hostname === 'localhost') return 'http://localhost:3000';
+  // If in development but using IP (e.g. testing on mobile via local network)
+  if (import.meta.env.DEV) {
+    return `http://${window.location.hostname}:3000`;
+  }
+  // Production: Served by the same server
+  return window.location.origin;
+};
+
+const socket = io(getServerUrl());
 
 function App() {
   const [roomId, setRoomId] = useState('');
