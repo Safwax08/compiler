@@ -314,3 +314,30 @@ header {
 .log-panel div {
   margin-bottom: 4px;
 }
+
+/* Peer Selector */
+.peer-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 15px;
+  background: rgba(100, 108, 255, 0.1);
+  border-radius: 20px;
+  font-size: 0.9rem;
+  border: 1px solid rgba(100, 108, 255, 0.2);
+}
+
+.peer-selector select {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  font-weight: 600;
+}
+
+.peer-selector select option {
+  background: #0f172a;
+  color: #fff;
+}

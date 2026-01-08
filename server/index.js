@@ -26,12 +26,29 @@ io.on('connection', (socket) => {
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
     console.log(`User ${socket.id} joined room ${roomId}`);
-    // Notify others in the room
-    socket.to(roomId).emit('user-joined', socket.id);
+
+    // Get all users in the room
+    const clients = io.sockets.adapter.rooms.get(roomId);
+    if (clients) {
+      const users = Array.from(clients);
+      // Send the list of current members to the joining user
+      socket.emit('room-members', users);
+      // Notify others that someone new joined
+      socket.to(roomId).emit('user-joined', socket.id);
+    }
   });
 
   socket.on('signal', ({ target, signal }) => {
     io.to(target).emit('signal', { sender: socket.id, signal });
+  });
+
+  socket.on('disconnecting', () => {
+    // Notify rooms the user is leaving
+    for (const room of socket.rooms) {
+      if (room !== socket.id) {
+        socket.to(room).emit('user-left', socket.id);
+      }
+    }
   });
 
   socket.on('disconnect', () => {

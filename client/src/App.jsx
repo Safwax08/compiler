@@ -31,6 +31,8 @@ function App() {
   const [peers, setPeers] = useState([]); // Array of connected peers (for now assuming 1:1)
   const [connectionState, setConnectionState] = useState('disconnected'); // disconnected, connecting, connected, error
   const [networkPath, setNetworkPath] = useState(null); // null, 'Local (Wi-Fi)', 'Global (Internet)'
+  const [roomMembers, setRoomMembers] = useState([]); // All users in the room
+  const [selectedPeerId, setSelectedPeerId] = useState('all'); // 'all' or specific targetId
   const [files, setFiles] = useState([]);
   const [transfers, setTransfers] = useState({}); // { fileName: { progress, speed, etc } }
   const [clipboardText, setClipboardText] = useState('');
@@ -60,11 +62,28 @@ function App() {
     socket.on('connect', () => addLog('Socket connected: ' + socket.id));
     socket.on('connect_error', (e) => addLog('Socket error: ' + e.message));
 
+    socket.on('room-members', (users) => {
+      // Filter out self
+      const others = users.filter(u => u !== socket.id);
+      setRoomMembers(others);
+      addLog(`Room members: ${others.length} others online`);
+    });
+
     socket.on('user-joined', (userId) => {
       addLog('User joined: ' + userId);
-      console.log('User joined, initiating connection:', userId);
-      // We are the initiator (existing user in room)
+      setRoomMembers(prev => [...new Set([...prev, userId])]);
+      // Auto-initiate connection for mesh
       createPeer(userId, socket.id, true);
+    });
+
+    socket.on('user-left', (userId) => {
+      addLog('User left: ' + userId);
+      setRoomMembers(prev => prev.filter(id => id !== userId));
+      setPeers(prev => prev.filter(id => id !== userId));
+      // Cleanup peer
+      const item = peersRef.current.find(p => p.peerId === userId);
+      if (item && item.peer) item.peer.destroy();
+      peersRef.current = peersRef.current.filter(p => p.peerId !== userId);
     });
 
     socket.on('signal', ({ sender, signal }) => {
@@ -84,6 +103,8 @@ function App() {
 
     return () => {
       socket.off('user-joined');
+      socket.off('user-left');
+      socket.off('room-members');
       socket.off('signal');
       socket.off('connect');
       socket.off('connect_error');
@@ -318,43 +339,58 @@ function App() {
   };
 
   const sendFile = async (file) => {
-    if (!peerRef.current) return;
-    const peer = peerRef.current;
-    addLog(`Sending file: ${file.name}`);
+    let targets = [];
+    if (selectedPeerId === 'all') {
+      targets = peersRef.current.filter(p => p.peer && !p.peer.destroyed);
+    } else {
+      const target = peersRef.current.find(p => p.peerId === selectedPeerId && p.peer && !p.peer.destroyed);
+      if (target) targets = [target];
+    }
 
-    // Send Metadata
-    peer.send(JSON.stringify({
-      type: 'meta',
-      name: file.name,
-      size: file.size,
-      mime: file.type
-    }));
+    if (targets.length === 0) {
+      addLog('Error: No active connection to target.');
+      return;
+    }
+
+    addLog(`Sending ${file.name} to ${selectedPeerId === 'all' ? 'everyone' : 'selected peer'}`);
+
+    targets.forEach(t => {
+      // Send Metadata
+      t.peer.send(JSON.stringify({
+        type: 'meta',
+        name: file.name,
+        size: file.size,
+        mime: file.type
+      }));
+    });
 
     setTransfers(prev => ({
       ...prev,
       [file.name]: { progress: 0, speed: '0 MB/s', total: file.size, current: 0 }
     }));
 
-    loopChunks(file, peer);
+    // For simplicity, we loop chunks once and parallel write to all targets
+    // This isn't perfect for diverse speeds but works for P2P
+    loopChunks(file, targets.map(t => t.peer));
   };
 
-  const loopChunks = async (file, peer) => {
-    const CHUNK_SIZE = 1024 * 1024; // 1MB chunks for higher throughput
+  const loopChunks = async (file, peers) => {
+    const CHUNK_SIZE = 1024 * 1024;
     let offset = 0;
     const startTime = Date.now();
     let lastUpdate = 0;
 
     while (offset < file.size) {
-      if (peer.destroyed) break;
+      const activePeers = peers.filter(p => !p.destroyed);
+      if (activePeers.length === 0) break;
 
       const chunk = file.slice(offset, offset + CHUNK_SIZE);
       const buffer = await chunk.arrayBuffer();
       const nodeBuffer = Buffer.from(buffer);
 
-      const canWrite = peer.write(nodeBuffer);
+      activePeers.forEach(p => p.write(nodeBuffer));
       offset += chunk.size;
 
-      // Throttle UI updates to every 150ms to save CPU
       const now = Date.now();
       if (now - lastUpdate > 150 || offset >= file.size) {
         const percent = Math.min(100, (offset / file.size) * 100);
@@ -368,14 +404,13 @@ function App() {
         lastUpdate = now;
       }
 
-      if (!canWrite) {
-        await new Promise(resolve => {
-          const onDrain = () => { peer.off('drain', onDrain); resolve(); };
-          peer.on('drain', onDrain);
-        });
+      // Backpressure: Wait if ANY peer is saturated
+      const needWait = activePeers.some(p => p._pc.sctp && p._pc.sctp.bufferedAmount > 4 * 1024 * 1024);
+      if (needWait) {
+        await new Promise(r => setTimeout(r, 50));
       }
     }
-    peer.send(JSON.stringify({ type: 'eof' }));
+    peers.forEach(p => { if (!p.destroyed) p.send(JSON.stringify({ type: 'eof' })); });
   };
 
   const max = (a, b) => a > b ? a : b;
@@ -400,12 +435,20 @@ function App() {
     const text = e.target.value;
     setClipboardText(text);
 
-    // Broadcast to peer
-    if (peerRef.current) {
-      peerRef.current.send(JSON.stringify({
-        type: 'clipboard',
-        text: text
-      }));
+    // Broadcast to selected peers
+    let targets = [];
+    if (selectedPeerId === 'all') {
+      targets = peersRef.current.filter(p => p.peer && !p.peer.destroyed);
+    } else {
+      const target = peersRef.current.find(p => p.peerId === selectedPeerId && p.peer && !p.peer.destroyed);
+      if (target) targets = [target];
+    }
+
+    targets.forEach(t => {
+      t.peer.send(JSON.stringify({ type: 'clipboard', text }));
+    });
+
+    if (targets.length > 0) {
       setUploadStatus('Syncing...');
       setTimeout(() => setUploadStatus('Synced'), 500);
     }
@@ -453,11 +496,15 @@ function App() {
               {connectionState === 'connected' ? 'Connected' :
                 connectionState === 'error' ? 'Failed' : 'Waiting...'}
             </span>
-            {connectionState === 'connected' && networkPath && (
-              <span className="status-badge connected" style={{ background: 'rgba(100, 108, 255, 0.2)', color: '#a5a5ff' }}>
-                {networkPath}
-              </span>
-            )}
+            <div className="peer-selector glass">
+              <span>Send to:</span>
+              <select value={selectedPeerId} onChange={(e) => setSelectedPeerId(e.target.value)}>
+                <option value="all">Everyone ({peers.length})</option>
+                {peers.map(id => (
+                  <option key={id} value={id}>{id.substring(0, 6)}... (Peer)</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {connectionState === 'connected' && (
