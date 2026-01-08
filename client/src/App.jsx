@@ -29,8 +29,8 @@ function App() {
   const [inputRoomId, setInputRoomId] = useState('');
   const [isJoined, setIsJoined] = useState(false);
   const [peers, setPeers] = useState([]); // Array of connected peers (for now assuming 1:1)
-  const [connectionState, setConnectionState] = useState('disconnected'); // disconnected, connecting, connected
-
+  const [connectionState, setConnectionState] = useState('disconnected'); // disconnected, connecting, connected, error
+  const [networkPath, setNetworkPath] = useState(null); // null, 'Local (Wi-Fi)', 'Global (Internet)'
   const [files, setFiles] = useState([]);
   const [transfers, setTransfers] = useState({}); // { fileName: { progress, speed, etc } }
   const [clipboardText, setClipboardText] = useState('');
@@ -129,6 +129,7 @@ function App() {
     // Re-emit join room to trigger a new handshake sequence
     socket.emit('join-room', roomId);
     setConnectionState('connecting');
+    setNetworkPath(null);
   };
 
   const createPeer = (targetId, myId, initiator, initialSignal = null) => {
@@ -175,6 +176,35 @@ function App() {
     peer.on('connect', () => {
       addLog('🚀 Connection established! Data channel open.');
       setConnectionState('connected');
+
+      // Detect Network Path (Local vs Global)
+      if (peer._pc) {
+        setTimeout(async () => {
+          try {
+            const stats = await peer._pc.getStats();
+            let type = 'Global (Internet)';
+            stats.forEach(report => {
+              if (report.type === 'remote-candidate' || report.type === 'local-candidate') {
+                if (report.candidateType === 'host') {
+                  // If we find a host candidate being used, it's likely local
+                  // Note: This is a heuristic, a more robust way is to check the 'selected-candidate-pair'
+                }
+              }
+              if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated) {
+                const local = stats.get(report.localCandidateId);
+                const remote = stats.get(report.remoteCandidateId);
+                if (local?.candidateType === 'host' && remote?.candidateType === 'host') {
+                  type = 'Local (Wi-Fi)';
+                }
+              }
+            });
+            setNetworkPath(type);
+            addLog(`Network Path Verified: ${type}`);
+          } catch (e) {
+            console.error('Stats error:', e);
+          }
+        }, 1000);
+      }
     });
 
     // Diagnostic Logs
@@ -428,6 +458,11 @@ function App() {
               {connectionState === 'connected' ? 'Connected' :
                 connectionState === 'error' ? 'Failed' : 'Waiting...'}
             </span>
+            {connectionState === 'connected' && networkPath && (
+              <span className="status-badge connected" style={{ background: 'rgba(100, 108, 255, 0.2)', color: '#a5a5ff' }}>
+                {networkPath}
+              </span>
+            )}
           </div>
 
           {connectionState === 'connected' && (
