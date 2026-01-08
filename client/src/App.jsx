@@ -38,6 +38,7 @@ function App() {
   const [transfers, setTransfers] = useState({}); // { fileName: { progress, speed, etc } }
   const [clipboardText, setClipboardText] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
+  const [myId, setMyId] = useState(''); // Phase 11: Reactive Identity
 
   const peerRef = useRef(null);
   const peersRef = useRef([]); // To keep track for cleanup
@@ -60,7 +61,10 @@ function App() {
       console.log(message);
     });
 
-    socket.on('connect', () => addLog('Socket connected: ' + socket.id));
+    socket.on('connect', () => {
+      addLog('Socket connected: ' + socket.id);
+      setMyId(socket.id);
+    });
     socket.on('connect_error', (e) => addLog('Socket error: ' + e.message));
 
     socket.on('room-state-update', (state) => {
@@ -348,8 +352,8 @@ function App() {
 
   const sendFile = async (file) => {
     // Check Permissions
-    const isHost = roomState.host === socket.id;
-    const isExplicitlyAllowed = roomState.allowedSenders.includes(socket.id);
+    const isHost = roomState.host === myId;
+    const isExplicitlyAllowed = roomState.allowedSenders.includes(myId);
     const isGloballyAllowed = roomState.globalSharing;
 
     if (!isHost && !isExplicitlyAllowed && !isGloballyAllowed) {
@@ -464,6 +468,12 @@ function App() {
     setClipboardText(text);
 
     // Broadcast to selected peers
+    const isHost = roomState.host === myId;
+    const isExplicitlyAllowed = roomState.allowedSenders.includes(myId);
+    const isGloballyAllowed = roomState.globalSharing;
+
+    if (!isHost && !isExplicitlyAllowed && !isGloballyAllowed) return;
+
     let targets = [];
     if (selectedPeerId === 'all') {
       targets = peersRef.current.filter(p => p.peer && !p.peer.destroyed);
@@ -525,8 +535,8 @@ function App() {
                 connectionState === 'error' ? 'Failed' : 'Waiting...'}
             </span>
             <div className="peer-selector glass">
-              <span className={`role-badge ${roomState.host === socket.id ? 'host' : 'guest'}`}>
-                {roomState.host === socket.id ? 'Host' : 'Member'}
+              <span className={`role-badge ${roomState.host === myId ? 'host' : 'guest'}`}>
+                {roomState.host === myId ? 'Host' : 'Member'}
               </span>
               <span>Send to:</span>
               <select value={selectedPeerId} onChange={(e) => setSelectedPeerId(e.target.value)}>
@@ -538,7 +548,7 @@ function App() {
             </div>
           </div>
 
-          {roomState.host === socket.id && roomMembers.length > 0 && (
+          {roomState.host === myId && roomMembers.length > 0 && (
             <div className="admin-panel glass">
               <div className="admin-header">
                 <h4>Manage Sharing Permissions</h4>
@@ -578,18 +588,26 @@ function App() {
             </div>
           )}
 
-          {connectionState === 'connected' && (
+          {/* Logic Fix: Host always sees the share blocks. Guests see them ONLY if approved OR if everyone is allowed. */}
+          {(connectionState === 'connected' || roomState.host === myId) && (
             <div className="split-view">
               <div className="panel glass">
                 <div className="panel-header">
                   <h3><Copy size={20} color="#646cff" /> Clipboard</h3>
                   <button className="small-btn glass" onClick={() => navigator.clipboard.writeText(clipboardText)}>Copy</button>
                 </div>
-                <textarea
-                  placeholder="Share text or code instantly..."
-                  value={clipboardText}
-                  onChange={handleClipboardChange}
-                ></textarea>
+                {(roomState.host === myId || roomState.allowedSenders.includes(myId) || roomState.globalSharing) ? (
+                  <textarea
+                    placeholder="Share text or code instantly..."
+                    value={clipboardText}
+                    onChange={handleClipboardChange}
+                  ></textarea>
+                ) : (
+                  <div className="sharing-locked glass" style={{ height: '250px' }}>
+                    <p>🔒 Clipboard Locked</p>
+                    <small>Host hasn't enabled sharing for you yet.</small>
+                  </div>
+                )}
                 <div className="clipboard-status">{uploadStatus}</div>
               </div>
 
@@ -598,7 +616,7 @@ function App() {
                   <h3><Download size={20} color="#646cff" /> Files</h3>
                 </div>
 
-                {(roomState.host === socket.id || roomState.allowedSenders.includes(socket.id) || roomState.globalSharing) ? (
+                {(roomState.host === myId || roomState.allowedSenders.includes(myId) || roomState.globalSharing) ? (
                   <DropZone onFilesSelected={handleFilesSelected} />
                 ) : (
                   <div className="sharing-locked glass">

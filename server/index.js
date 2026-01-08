@@ -45,7 +45,8 @@ io.on('connection', (socket) => {
     if (clients) {
       const users = Array.from(clients);
       socket.emit('room-members', users);
-      socket.emit('room-state-update', state);
+      // Sync state to all members so the host sees the new user in the list
+      io.to(roomId).emit('room-state-update', state);
       socket.to(roomId).emit('user-joined', socket.id);
     }
   });
