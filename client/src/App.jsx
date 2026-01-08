@@ -69,17 +69,13 @@ function App() {
 
     socket.on('signal', ({ sender, signal }) => {
       addLog(`Signal received from: ${sender} (Type: ${signal.type || 'candidate'})`);
-      // Find existing peer or create new one
       const item = peersRef.current.find(p => p.peerId === sender);
       if (item) {
         if (item.peer) {
           item.peer.signal(signal);
         } else {
-          // Peer exists but not yet initialized, wait for it
-          setTimeout(() => {
-            const retryItem = peersRef.current.find(p => p.peerId === sender);
-            if (retryItem && retryItem.peer) retryItem.peer.signal(signal);
-          }, 100);
+          // Queue signal if peer is still being constructed
+          item.queue.push(signal);
         }
       } else {
         createPeer(sender, socket.id, false, signal);
@@ -141,8 +137,8 @@ function App() {
 
     addLog(`Initiating P2P Handshake (initiator: ${initiator})`);
 
-    // Create a temporary placeholder to "reserve" this targetId
-    const peerPlaceholder = { peerId: targetId, peer: null };
+    // Create a temporary placeholder with a signal queue
+    const peerPlaceholder = { peerId: targetId, peer: null, queue: [] };
     peersRef.current.push(peerPlaceholder);
 
     const peer = new SimplePeer({
@@ -157,16 +153,19 @@ function App() {
           { urls: 'stun:stun4.l.google.com:19302' },
           { urls: 'stun:stun.services.mozilla.com' },
           { urls: 'stun:stun.ekiga.net' },
-          { urls: 'stun:stun.ideasip.com' },
-          { urls: 'stun:stun.schlund.de' },
           { urls: 'stun:global.stun.twilio.com:3478' }
         ],
         iceCandidatePoolSize: 10
       }
     });
 
-    // Update placeholder with actual peer
+    // Update placeholder and flush queue
     peerPlaceholder.peer = peer;
+    if (peerPlaceholder.queue.length > 0) {
+      addLog(`Flushing ${peerPlaceholder.queue.length} signals from queue...`);
+      peerPlaceholder.queue.forEach(sig => peer.signal(sig));
+      peerPlaceholder.queue = [];
+    }
 
     peer.on('signal', (signal) => {
       addLog(`Sending ${signal.type} to peer...`);
