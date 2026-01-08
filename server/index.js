@@ -5,13 +5,16 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => callback(null, true), // Allow all origins with credentials
+  credentials: true
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: (origin, callback) => callback(null, true),
     methods: ["GET", "POST"],
     credentials: true
   }

@@ -103,14 +103,31 @@ function App() {
   };
 
   const createPeer = (targetId, myId, initiator, initialSignal = null) => {
+    // Prevent duplicate peer connections for the same target
+    if (peersRef.current.find(p => p.peerId === targetId)) {
+      console.log('Peer already exists for target:', targetId);
+      return;
+    }
+
+    addLog(`Creating peer (initiator: ${initiator})`);
+
     const peer = new SimplePeer({
       initiator: initiator,
-      trickle: false,
-      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+      trickle: true, // Enable trickle ICE for faster and more robust connection
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' }
+        ]
+      }
     });
 
     peer.on('signal', (signal) => {
-      addLog('Sending signal to: ' + targetId);
+      addLog('Sending signal to: ' + targetId + ' (Type: ' + signal.type + ')');
       socket.emit('signal', { target: targetId, signal });
     });
 
@@ -125,14 +142,22 @@ function App() {
     peer.on('error', (err) => {
       addLog('Peer error: ' + err.message);
       console.error('Peer error:', err);
+      if (err.code === 'ERR_ICE_CONNECTION_FAILURE') {
+        addLog('ICE connection failed. This usually means a direct connection could not be established.');
+      }
       setConnectionState('error');
     });
 
     peer.on('close', () => {
+      addLog('Peer closed');
       setConnectionState('disconnected');
+      // Cleanup peer from list
+      peersRef.current = peersRef.current.filter(p => p.peerId !== targetId);
+      setPeers(prev => prev.filter(id => id !== targetId));
     });
 
     if (initialSignal) {
+      addLog('Processing initial signal');
       peer.signal(initialSignal);
     }
 
