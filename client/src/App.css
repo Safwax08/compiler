@@ -344,9 +344,41 @@ header {
 }
 
 .admin-panel h4 {
-  margin: 0 0 15px 0;
+  margin: 0;
   color: #ffd700;
   font-size: 0.9rem;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.global-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: #fff;
+  cursor: pointer;
+  background: rgba(100, 108, 255, 0.1);
+  padding: 8px 15px;
+  border-radius: 12px;
+  border: 1px solid rgba(100, 108, 255, 0.2);
+  transition: all 0.3s;
+}
+
+.global-toggle:hover {
+  background: rgba(100, 108, 255, 0.2);
+}
+
+.global-toggle input {
+  cursor: pointer;
+  accent-color: #646cff;
 }
 
 .member-list {
@@ -378,6 +410,29 @@ header {
 .toggle-btn.off {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+
+.sharing-locked {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 50px 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  text-align: center;
+  gap: 10px;
+}
+
+.sharing-locked p {
+  color: #fff;
+  font-weight: 700;
+  margin: 0;
+}
+
+.sharing-locked small {
+  color: #94a3b8;
 }
 
 .busy-overlay {

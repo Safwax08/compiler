@@ -31,7 +31,12 @@ io.on('connection', (socket) => {
 
     // Manage Room State
     if (!roomStates.has(roomId)) {
-      roomStates.set(roomId, { host: socket.id, allowedSenders: [socket.id], isBusy: false });
+      roomStates.set(roomId, {
+        host: socket.id,
+        allowedSenders: [socket.id],
+        isBusy: false,
+        globalSharing: false // Phase 10: Default everyone off
+      });
     }
     const state = roomStates.get(roomId);
 
@@ -53,6 +58,14 @@ io.on('connection', (socket) => {
       } else {
         state.allowedSenders = state.allowedSenders.filter(id => id !== userId);
       }
+      io.to(roomId).emit('room-state-update', state);
+    }
+  });
+
+  socket.on('set-global-sharing', ({ roomId, allowed }) => {
+    const state = roomStates.get(roomId);
+    if (state && state.host === socket.id) {
+      state.globalSharing = allowed;
       io.to(roomId).emit('room-state-update', state);
     }
   });

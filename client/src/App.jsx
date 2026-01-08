@@ -348,8 +348,11 @@ function App() {
 
   const sendFile = async (file) => {
     // Check Permissions
-    const canSend = roomState.allowedSenders.includes(socket.id);
-    if (!canSend) {
+    const isHost = roomState.host === socket.id;
+    const isExplicitlyAllowed = roomState.allowedSenders.includes(socket.id);
+    const isGloballyAllowed = roomState.globalSharing;
+
+    if (!isHost && !isExplicitlyAllowed && !isGloballyAllowed) {
       addLog('❌ Error: You do not have permission to share in this room.');
       return;
     }
@@ -537,7 +540,17 @@ function App() {
 
           {roomState.host === socket.id && roomMembers.length > 0 && (
             <div className="admin-panel glass">
-              <h4>Manage Sharing Permissions</h4>
+              <div className="admin-header">
+                <h4>Manage Sharing Permissions</h4>
+                <label className="global-toggle">
+                  <input
+                    type="checkbox"
+                    checked={roomState.globalSharing}
+                    onChange={(e) => socket.emit('set-global-sharing', { roomId, allowed: e.target.checked })}
+                  />
+                  Allow Everyone to Share
+                </label>
+              </div>
               <div className="member-list">
                 {roomMembers.map(id => (
                   <div key={id} className="member-item">
@@ -584,7 +597,15 @@ function App() {
                 <div className="panel-header">
                   <h3><Download size={20} color="#646cff" /> Files</h3>
                 </div>
-                <DropZone onFilesSelected={handleFilesSelected} />
+
+                {(roomState.host === socket.id || roomState.allowedSenders.includes(socket.id) || roomState.globalSharing) ? (
+                  <DropZone onFilesSelected={handleFilesSelected} />
+                ) : (
+                  <div className="sharing-locked glass">
+                    <p>🔒 Sharing Locked by Host</p>
+                    <small>Wait for host approval to send files.</small>
+                  </div>
+                )}
 
                 <div className="file-list">
                   {Object.entries(transfers).map(([name, stats]) => (
