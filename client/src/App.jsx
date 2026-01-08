@@ -33,6 +33,7 @@ function App() {
   const [networkPath, setNetworkPath] = useState(null); // null, 'Local (Wi-Fi)', 'Global (Internet)'
   const [roomMembers, setRoomMembers] = useState([]); // All users in the room
   const [selectedPeerId, setSelectedPeerId] = useState('all'); // 'all' or specific targetId
+  const [roomState, setRoomState] = useState({ host: '', allowedSenders: [], isBusy: false });
   const [files, setFiles] = useState([]);
   const [transfers, setTransfers] = useState({}); // { fileName: { progress, speed, etc } }
   const [clipboardText, setClipboardText] = useState('');
@@ -61,6 +62,12 @@ function App() {
 
     socket.on('connect', () => addLog('Socket connected: ' + socket.id));
     socket.on('connect_error', (e) => addLog('Socket error: ' + e.message));
+
+    socket.on('room-state-update', (state) => {
+      setRoomState(state);
+      if (state.isBusy) addLog('🔒 Room Busy: A transfer is in progress.');
+      else addLog('🔓 Room Ready: Channel clear.');
+    });
 
     socket.on('room-members', (users) => {
       // Filter out self
@@ -105,6 +112,7 @@ function App() {
       socket.off('user-joined');
       socket.off('user-left');
       socket.off('room-members');
+      socket.off('room-state-update');
       socket.off('signal');
       socket.off('connect');
       socket.off('connect_error');
@@ -339,6 +347,18 @@ function App() {
   };
 
   const sendFile = async (file) => {
+    // Check Permissions
+    const canSend = roomState.allowedSenders.includes(socket.id);
+    if (!canSend) {
+      addLog('❌ Error: You do not have permission to share in this room.');
+      return;
+    }
+
+    if (roomState.isBusy) {
+      addLog('⏳ Error: Another transfer is in progress. Please wait.');
+      return;
+    }
+
     let targets = [];
     if (selectedPeerId === 'all') {
       targets = peersRef.current.filter(p => p.peer && !p.peer.destroyed);
@@ -353,6 +373,7 @@ function App() {
     }
 
     addLog(`Sending ${file.name} to ${selectedPeerId === 'all' ? 'everyone' : 'selected peer'}`);
+    socket.emit('transfer-status', { roomId, isBusy: true });
 
     targets.forEach(t => {
       // Send Metadata
@@ -371,7 +392,11 @@ function App() {
 
     // For simplicity, we loop chunks once and parallel write to all targets
     // This isn't perfect for diverse speeds but works for P2P
-    loopChunks(file, targets.map(t => t.peer));
+    try {
+      await loopChunks(file, targets.map(t => t.peer));
+    } finally {
+      socket.emit('transfer-status', { roomId, isBusy: false });
+    }
   };
 
   const loopChunks = async (file, peers) => {
@@ -497,6 +522,9 @@ function App() {
                 connectionState === 'error' ? 'Failed' : 'Waiting...'}
             </span>
             <div className="peer-selector glass">
+              <span className={`role-badge ${roomState.host === socket.id ? 'host' : 'guest'}`}>
+                {roomState.host === socket.id ? 'Host' : 'Member'}
+              </span>
               <span>Send to:</span>
               <select value={selectedPeerId} onChange={(e) => setSelectedPeerId(e.target.value)}>
                 <option value="all">Everyone ({peers.length})</option>
@@ -506,6 +534,36 @@ function App() {
               </select>
             </div>
           </div>
+
+          {roomState.host === socket.id && roomMembers.length > 0 && (
+            <div className="admin-panel glass">
+              <h4>Manage Sharing Permissions</h4>
+              <div className="member-list">
+                {roomMembers.map(id => (
+                  <div key={id} className="member-item">
+                    <span>{id.substring(0, 8)}...</span>
+                    <button
+                      className={`toggle-btn ${roomState.allowedSenders.includes(id) ? 'on' : 'off'}`}
+                      onClick={() => socket.emit('set-permission', {
+                        roomId,
+                        userId: id,
+                        allowed: !roomState.allowedSenders.includes(id)
+                      })}
+                    >
+                      {roomState.allowedSenders.includes(id) ? 'Revoke Share' : 'Allow Share'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {roomState.isBusy && (
+            <div className="busy-overlay glass">
+              <div className="slow-loader"></div>
+              <p>A global transfer is in progress. Please wait...</p>
+            </div>
+          )}
 
           {connectionState === 'connected' && (
             <div className="split-view">
