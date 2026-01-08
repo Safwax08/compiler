@@ -110,6 +110,12 @@ function App() {
     setConnectionState('connecting');
   };
 
+  const copyRoomLink = () => {
+    const url = `${window.location.origin}?room=${roomId}`;
+    navigator.clipboard.writeText(url);
+    addLog('Room link copied to clipboard!');
+  };
+
   const retryConnection = () => {
     addLog('Retrying connection...');
     // Clean up existing peer if any
@@ -132,7 +138,7 @@ function App() {
       return;
     }
 
-    addLog(`Creating peer (initiator: ${initiator})`);
+    addLog(`Initiating P2P Handshake (initiator: ${initiator})`);
 
     // Create a temporary placeholder to "reserve" this targetId
     const peerPlaceholder = { peerId: targetId, peer: null };
@@ -150,6 +156,8 @@ function App() {
           { urls: 'stun:stun4.l.google.com:19302' },
           { urls: 'stun:stun.services.mozilla.com' },
           { urls: 'stun:stun.ekiga.net' },
+          { urls: 'stun:stun.ideasip.com' },
+          { urls: 'stun:stun.schlund.de' },
           { urls: 'stun:global.stun.twilio.com:3478' }
         ],
         iceCandidatePoolSize: 10
@@ -160,12 +168,12 @@ function App() {
     peerPlaceholder.peer = peer;
 
     peer.on('signal', (signal) => {
-      addLog(`Sending ${signal.type} signal to: ${targetId}`);
+      addLog(`Sending ${signal.type} to peer...`);
       socket.emit('signal', { target: targetId, signal });
     });
 
     peer.on('connect', () => {
-      addLog('Peer connected!');
+      addLog('🚀 Connection established! Data channel open.');
       setConnectionState('connected');
     });
 
@@ -175,7 +183,7 @@ function App() {
         const state = peer._pc.iceConnectionState;
         addLog(`ICE State: ${state}`);
         if (state === 'failed' || state === 'disconnected') {
-          addLog('Network Restriction Alert: A direct connection could not be established. This often happens on restricted Wi-Fi, mobile hotspots, or when one device is behind a strict firewall/NAT.');
+          addLog('⚠️ Network Restriction Alert: Peer-to-peer path blocked by NAT/Firewall.');
           setConnectionState('error');
         }
       };
@@ -188,15 +196,13 @@ function App() {
 
     peer.on('error', (err) => {
       addLog('Peer error: ' + err.message);
-      console.error('Peer error:', err);
       if (err.code === 'ERR_ICE_CONNECTION_FAILURE') {
-        addLog('Connection failed: Both peers could not establish a direct connection.');
+        setConnectionState('error');
       }
-      setConnectionState('error');
     });
 
     peer.on('close', () => {
-      addLog('Peer closed');
+      addLog('Peer connection closed.');
       if (connectionState !== 'error') setConnectionState('disconnected');
 
       // Cleanup
@@ -221,7 +227,7 @@ function App() {
       if (text.startsWith('{')) {
         const meta = JSON.parse(text);
         if (meta.type === 'meta') {
-          console.log('Starting receiving file:', meta.name);
+          addLog(`Receiving file: ${meta.name}`);
           incomingFileRef.current = {
             name: meta.name,
             size: meta.size,
@@ -234,7 +240,7 @@ function App() {
             [meta.name]: { progress: 0, speed: '0 MB/s', total: meta.size, current: 0 }
           }));
         } else if (meta.type === 'eof') {
-          console.log('File finished');
+          addLog(`File received: ${incomingFileRef.current.name}`);
           saveFile();
         } else if (meta.type === 'clipboard') {
           setClipboardText(meta.text);
@@ -254,7 +260,7 @@ function App() {
 
     // Update UI
     const percent = Math.min(100, (file.received / file.size) * 100);
-    const elapsed = (Date.now() - file.startTime) / 1000;
+    const elapsed = Math.max(0.1, (Date.now() - file.startTime) / 1000);
     const speed = ((file.received / 1024 / 1024) / elapsed).toFixed(2) + ' MB/s';
 
     setTransfers(prev => ({
@@ -285,6 +291,7 @@ function App() {
   const sendFile = async (file) => {
     if (!peerRef.current) return;
     const peer = peerRef.current;
+    addLog(`Sending file: ${file.name}`);
 
     // Send Metadata
     peer.send(JSON.stringify({
@@ -294,64 +301,10 @@ function App() {
       mime: file.type
     }));
 
-    const CHUNK_SIZE = 64 * 1024; // 64KB
-    let offset = 0;
-    const startTime = Date.now();
-
     setTransfers(prev => ({
       ...prev,
       [file.name]: { progress: 0, speed: '0 MB/s', total: file.size, current: 0 }
     }));
-
-    // Function to process chunks with backpressure
-    const readNextChunk = () => {
-      if (offset >= file.size) {
-        peer.send(JSON.stringify({ type: 'eof' }));
-        console.log('File sent complete');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const buffer = Buffer.from(e.target.result); // use Buffer from polyfill
-
-        const header = peer.write(buffer);
-
-        offset += buffer.length;
-
-        // Update UI
-        const percent = Math.min(100, (offset / file.size) * 100);
-        const elapsed = (Date.now() - startTime) / 1000;
-        const speed = ((offset / 1024 / 1024) / elapsed).toFixed(2) + ' MB/s';
-
-        setTransfers(prev => ({
-          ...prev,
-          [file.name]: {
-            progress: percent,
-            speed: speed,
-            total: file.size,
-            current: offset
-          }
-        }));
-
-        if (!header) {
-          // Backpressure: wait for drain
-          // but simple-peer doesn't always emit drain reliably on DataChannels?
-          // Actually it does.
-        } else {
-          // continue immediately if possible, or use timeout to yield
-          setTimeout(readNextChunk, 0);
-        }
-      };
-      reader.readAsArrayBuffer(file.slice(offset, offset + CHUNK_SIZE));
-    };
-
-    // Handle backpressure
-    // WARNING: simple-peer 'drain' might not fire if we flood it too fast?
-    // With FileReader async locally, it might be fine.
-    // A better way is to loop.
-
-    // Let's use a loop structure with await.
 
     loopChunks(file, peer);
   };
@@ -373,7 +326,7 @@ function App() {
 
       // Update UI
       const percent = Math.min(100, (offset / file.size) * 100);
-      const elapsed = (max(0.1, Date.now() - startTime)) / 1000;
+      const elapsed = Math.max(0.1, (Date.now() - startTime) / 1000);
       const speed = ((offset / 1024 / 1024) / elapsed).toFixed(2) + ' MB/s';
 
       setTransfers(prev => ({
@@ -415,6 +368,7 @@ function App() {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(roomId);
+    addLog('Room ID copied!');
   };
 
   const handleClipboardChange = (e) => {
@@ -435,25 +389,26 @@ function App() {
   return (
     <div className="App">
       <header>
-        <h1><Share2 color="#646cff" size={40} style={{ verticalAlign: 'middle', marginRight: '10px' }} /> GravityShare</h1>
-        <p>P2P Large File Transfer & Clipboard</p>
+        <h1>GravityShare</h1>
+        <p>Ultra-fast P2P File Transfer & Clipboard</p>
       </header>
 
       {!isJoined ? (
-        <div className="card start-screen">
+        <div className="card start-screen glass">
           <div className="option">
             <h2>Send Files</h2>
-            <button onClick={generateRoom}>Create Room</button>
+            <button onClick={generateRoom} style={{ width: '100%' }}>Create Secure Room</button>
           </div>
-          <div className="divider">OR</div>
+          <div className="divider">SECURE P2P TUNNEL</div>
           <div className="option">
             <h2>Receive Files</h2>
             <div className="join-input">
               <input
                 type="text"
-                placeholder="Enter Room ID"
+                placeholder="Enter 7-digit Room ID"
                 value={inputRoomId}
                 onChange={(e) => setInputRoomId(e.target.value)}
+                style={{ flex: 1 }}
               />
               <button onClick={joinRoom}>Join</button>
             </div>
@@ -461,33 +416,38 @@ function App() {
         </div>
       ) : (
         <div className="room-view">
-          <div className="room-info">
-            <span>Room ID: <strong>{roomId}</strong></span>
-            <button className="icon-btn" onClick={copyToClipboard} title="Copy Room ID"><Copy size={18} /></button>
+          <div className="room-info glass">
+            <div className="room-id-box" onClick={copyToClipboard} style={{ cursor: 'pointer' }}>
+              <span>Room: <strong>{roomId}</strong></span>
+              <Copy size={16} />
+            </div>
+            <button className="small-btn glass" onClick={copyRoomLink} title="Copy Share Link">
+              <Share2 size={16} /> Link
+            </button>
             <span className={`status-badge ${connectionState}`}>
               {connectionState === 'connected' ? 'Connected' :
-                connectionState === 'error' ? 'Connection Failed' : 'Waiting for peer...'}
+                connectionState === 'error' ? 'Failed' : 'Waiting...'}
             </span>
           </div>
 
           {connectionState === 'connected' && (
             <div className="split-view">
-              <div className="panel clipboard-panel">
+              <div className="panel glass">
                 <div className="panel-header">
-                  <h3><Copy size={20} /> Shared Clipboard</h3>
-                  <button className="small-btn" onClick={() => navigator.clipboard.writeText(clipboardText)}>Copy</button>
+                  <h3><Copy size={20} color="#646cff" /> Clipboard</h3>
+                  <button className="small-btn glass" onClick={() => navigator.clipboard.writeText(clipboardText)}>Copy</button>
                 </div>
                 <textarea
-                  placeholder="Type here to share text instantly..."
+                  placeholder="Share text or code instantly..."
                   value={clipboardText}
                   onChange={handleClipboardChange}
                 ></textarea>
                 <div className="clipboard-status">{uploadStatus}</div>
               </div>
 
-              <div className="panel transfer-panel">
+              <div className="panel glass">
                 <div className="panel-header">
-                  <h3><Download size={20} /> File Transfer</h3>
+                  <h3><Download size={20} color="#646cff" /> Files</h3>
                 </div>
                 <DropZone onFilesSelected={handleFilesSelected} />
 
@@ -509,19 +469,46 @@ function App() {
 
           {connectionState !== 'connected' && (
             <div className="waiting-message">
-              <p>{connectionState === 'error' ? 'Something went wrong.' : 'Share this Room ID with your peer.'}</p>
-
               {connectionState === 'error' ? (
-                <button className="retry-btn" onClick={retryConnection} style={{ margin: '20px 0', padding: '10px 20px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
-                  Retry Connection
-                </button>
+                <div className="error-card glass" style={{ padding: '30px', textAlign: 'center' }}>
+                  <h3 style={{ color: '#f87171' }}>Connection Blocked</h3>
+                  <p>A direct P2P path could not be found due to network restrictions.</p>
+                  <button onClick={retryConnection}>Attempt Reconnect</button>
+                </div>
               ) : (
-                <div className="loader"></div>
+                <>
+                  <p>Share the Room ID or Link with your peer.</p>
+                  <div className="loader"></div>
+                </>
               )}
 
-              <div style={{ marginTop: '20px', fontSize: '0.8rem', color: '#666', textAlign: 'left', background: '#111', padding: '10px', borderRadius: '5px' }}>
-                <strong>Debug Logs:</strong>
-                {logs.length > 0 ? logs.map((log, i) => <div key={i}>{log}</div>) : <div>Waiting for logs...</div>}
+              <div className="help-section">
+                <h3>Connection Troubleshooting</h3>
+                <div className="help-grid">
+                  <div className="help-item">
+                    <h4>Check Network</h4>
+                    <p>Try matching Wi-Fi networks (best results).</p>
+                  </div>
+                  <div className="help-item">
+                    <h4>Public Wi-Fi</h4>
+                    <p>Hotels/Cafes often block P2P. Use a mobile hotspot.</p>
+                  </div>
+                  <div className="help-item">
+                    <h4>VPN/Firewall</h4>
+                    <p>Disable VPNs or Corporate Firewalls if active.</p>
+                  </div>
+                  <div className="help-item">
+                    <h4>Mobile Data</h4>
+                    <p>Switch to 4G/5G if Wi-Fi is failing.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="log-panel">
+                <strong>Connection Diagnostics:</strong>
+                <div className="log-content" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                  {logs.length > 0 ? logs.map((log, i) => <div key={i}>{log}</div>) : <div>Awaiting signal...</div>}
+                </div>
               </div>
             </div>
           )}
