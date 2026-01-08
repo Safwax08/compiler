@@ -68,11 +68,19 @@ function App() {
     });
 
     socket.on('signal', ({ sender, signal }) => {
-      addLog('Signal received from: ' + sender);
+      addLog(`Signal received from: ${sender} (Type: ${signal.type || 'candidate'})`);
       // Find existing peer or create new one
       const item = peersRef.current.find(p => p.peerId === sender);
       if (item) {
-        item.peer.signal(signal);
+        if (item.peer) {
+          item.peer.signal(signal);
+        } else {
+          // Peer exists but not yet initialized, wait for it
+          setTimeout(() => {
+            const retryItem = peersRef.current.find(p => p.peerId === sender);
+            if (retryItem && retryItem.peer) retryItem.peer.signal(signal);
+          }, 100);
+        }
       } else {
         createPeer(sender, socket.id, false, signal);
       }
@@ -162,12 +170,14 @@ function App() {
     });
 
     // Diagnostic Logs
-    // Simple-peer doesn't expose iceConnectionState directly as an event, 
-    // but it exposes the underlying RTCPeerConnection if needed or we use internal logs
-    // We can check if _pc exists (internal simple-peer)
     if (peer._pc) {
       peer._pc.oniceconnectionstatechange = () => {
-        addLog(`ICE State: ${peer._pc.iceConnectionState}`);
+        const state = peer._pc.iceConnectionState;
+        addLog(`ICE State: ${state}`);
+        if (state === 'failed' || state === 'disconnected') {
+          addLog('Network Restriction Alert: A direct connection could not be established. This often happens on restricted Wi-Fi, mobile hotspots, or when one device is behind a strict firewall/NAT.');
+          setConnectionState('error');
+        }
       };
       peer._pc.onsignalingstatechange = () => {
         addLog(`Signaling State: ${peer._pc.signalingState}`);
