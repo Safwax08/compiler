@@ -102,8 +102,23 @@ function App() {
     setConnectionState('connecting');
   };
 
+  const retryConnection = () => {
+    addLog('Retrying connection...');
+    // Clean up existing peer if any
+    if (peerRef.current) {
+      peerRef.current.destroy();
+      peerRef.current = null;
+    }
+    peersRef.current = [];
+    setPeers([]);
+
+    // Re-emit join room to trigger a new handshake sequence
+    socket.emit('join-room', roomId);
+    setConnectionState('connecting');
+  };
+
   const createPeer = (targetId, myId, initiator, initialSignal = null) => {
-    // Prevent duplicate peer connections for the same target
+    // Race Condition Fix: Register peer immediately to prevent duplicates
     if (peersRef.current.find(p => p.peerId === targetId)) {
       console.log('Peer already exists for target:', targetId);
       return;
@@ -111,9 +126,13 @@ function App() {
 
     addLog(`Creating peer (initiator: ${initiator})`);
 
+    // Create a temporary placeholder to "reserve" this targetId
+    const peerPlaceholder = { peerId: targetId, peer: null };
+    peersRef.current.push(peerPlaceholder);
+
     const peer = new SimplePeer({
       initiator: initiator,
-      trickle: true, // Enable trickle ICE for faster and more robust connection
+      trickle: true,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -121,21 +140,39 @@ function App() {
           { urls: 'stun:stun2.l.google.com:19302' },
           { urls: 'stun:stun3.l.google.com:19302' },
           { urls: 'stun:stun4.l.google.com:19302' },
+          { urls: 'stun:stun.services.mozilla.com' },
+          { urls: 'stun:stun.ekiga.net' },
           { urls: 'stun:global.stun.twilio.com:3478' }
-        ]
+        ],
+        iceCandidatePoolSize: 10
       }
     });
 
+    // Update placeholder with actual peer
+    peerPlaceholder.peer = peer;
+
     peer.on('signal', (signal) => {
-      addLog('Sending signal to: ' + targetId + ' (Type: ' + signal.type + ')');
+      addLog(`Sending ${signal.type} signal to: ${targetId}`);
       socket.emit('signal', { target: targetId, signal });
     });
 
     peer.on('connect', () => {
       addLog('Peer connected!');
-      console.log('Peer connected!');
       setConnectionState('connected');
     });
+
+    // Diagnostic Logs
+    // Simple-peer doesn't expose iceConnectionState directly as an event, 
+    // but it exposes the underlying RTCPeerConnection if needed or we use internal logs
+    // We can check if _pc exists (internal simple-peer)
+    if (peer._pc) {
+      peer._pc.oniceconnectionstatechange = () => {
+        addLog(`ICE State: ${peer._pc.iceConnectionState}`);
+      };
+      peer._pc.onsignalingstatechange = () => {
+        addLog(`Signaling State: ${peer._pc.signalingState}`);
+      };
+    }
 
     peer.on('data', handleData);
 
@@ -143,27 +180,28 @@ function App() {
       addLog('Peer error: ' + err.message);
       console.error('Peer error:', err);
       if (err.code === 'ERR_ICE_CONNECTION_FAILURE') {
-        addLog('ICE connection failed. This usually means a direct connection could not be established.');
+        addLog('Connection failed: Both peers could not establish a direct connection.');
       }
       setConnectionState('error');
     });
 
     peer.on('close', () => {
       addLog('Peer closed');
-      setConnectionState('disconnected');
-      // Cleanup peer from list
+      if (connectionState !== 'error') setConnectionState('disconnected');
+
+      // Cleanup
       peersRef.current = peersRef.current.filter(p => p.peerId !== targetId);
+      if (peerRef.current === peer) peerRef.current = null;
       setPeers(prev => prev.filter(id => id !== targetId));
     });
 
     if (initialSignal) {
-      addLog('Processing initial signal');
+      addLog('Processing incoming signal...');
       peer.signal(initialSignal);
     }
 
-    peerRef.current = peer; // Keep reference to 1:1 peer for simplicity
-    peersRef.current.push({ peerId: targetId, peer });
-    setPeers(prev => [...prev, targetId]);
+    peerRef.current = peer;
+    setPeers(prev => [...new Set([...prev, targetId])]);
   };
 
   const handleData = (data) => {
@@ -417,7 +455,8 @@ function App() {
             <span>Room ID: <strong>{roomId}</strong></span>
             <button className="icon-btn" onClick={copyToClipboard} title="Copy Room ID"><Copy size={18} /></button>
             <span className={`status-badge ${connectionState}`}>
-              {connectionState === 'connected' ? 'Connected' : 'Waiting for peer...'}
+              {connectionState === 'connected' ? 'Connected' :
+                connectionState === 'error' ? 'Connection Failed' : 'Waiting for peer...'}
             </span>
           </div>
 
@@ -460,8 +499,16 @@ function App() {
 
           {connectionState !== 'connected' && (
             <div className="waiting-message">
-              <p>Share this Room ID with your peer.</p>
-              <div className="loader"></div>
+              <p>{connectionState === 'error' ? 'Something went wrong.' : 'Share this Room ID with your peer.'}</p>
+
+              {connectionState === 'error' ? (
+                <button className="retry-btn" onClick={retryConnection} style={{ margin: '20px 0', padding: '10px 20px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                  Retry Connection
+                </button>
+              ) : (
+                <div className="loader"></div>
+              )}
+
               <div style={{ marginTop: '20px', fontSize: '0.8rem', color: '#666', textAlign: 'left', background: '#111', padding: '10px', borderRadius: '5px' }}>
                 <strong>Debug Logs:</strong>
                 {logs.length > 0 ? logs.map((log, i) => <div key={i}>{log}</div>) : <div>Waiting for logs...</div>}
