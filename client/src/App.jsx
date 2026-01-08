@@ -339,46 +339,42 @@ function App() {
   };
 
   const loopChunks = async (file, peer) => {
-    const CHUNK_SIZE = 256 * 1024; // 256KB
+    const CHUNK_SIZE = 1024 * 1024; // 1MB chunks for higher throughput
     let offset = 0;
     const startTime = Date.now();
+    let lastUpdate = 0;
 
     while (offset < file.size) {
+      if (peer.destroyed) break;
+
       const chunk = file.slice(offset, offset + CHUNK_SIZE);
       const buffer = await chunk.arrayBuffer();
-      const nodeBuffer = Buffer.from(buffer); // Convert to Node Buffer for simple-peer
-
-      if (peer.destroyed) break;
+      const nodeBuffer = Buffer.from(buffer);
 
       const canWrite = peer.write(nodeBuffer);
       offset += chunk.size;
 
-      // Update UI
-      const percent = Math.min(100, (offset / file.size) * 100);
-      const elapsed = Math.max(0.1, (Date.now() - startTime) / 1000);
-      const speed = ((offset / 1024 / 1024) / elapsed).toFixed(2) + ' MB/s';
+      // Throttle UI updates to every 150ms to save CPU
+      const now = Date.now();
+      if (now - lastUpdate > 150 || offset >= file.size) {
+        const percent = Math.min(100, (offset / file.size) * 100);
+        const elapsed = Math.max(0.1, (now - startTime) / 1000);
+        const speed = ((offset / 1024 / 1024) / elapsed).toFixed(2) + ' MB/s';
 
-      setTransfers(prev => ({
-        ...prev,
-        [file.name]: {
-          progress: percent,
-          speed: speed,
-          total: file.size,
-          current: offset
-        }
-      }));
+        setTransfers(prev => ({
+          ...prev,
+          [file.name]: { progress: percent, speed: speed, total: file.size, current: offset }
+        }));
+        lastUpdate = now;
+      }
 
       if (!canWrite) {
         await new Promise(resolve => {
-          const onDrain = () => {
-            peer.off('drain', onDrain);
-            resolve();
-          };
+          const onDrain = () => { peer.off('drain', onDrain); resolve(); };
           peer.on('drain', onDrain);
         });
       }
     }
-
     peer.send(JSON.stringify({ type: 'eof' }));
   };
 
