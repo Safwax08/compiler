@@ -1,0 +1,117 @@
+/* Core 3D Container */
+.App {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+  perspective: 2000px; /* High perspective for mobile 3D depth */
+  height: 100vh;
+  overflow: hidden;
+}
+
+.lobby-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Wrapper for the door effect */
+.room-outer-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transform-style: preserve-3d;
+}
+
+/* Door Panels */
+.door {
+  position: absolute;
+  top: -10%;
+  width: 50.5%; /* Slight overlap to prevent gap */
+  height: 120%;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 2px solid rgba(100, 108, 255, 0.3);
+  z-index: 10;
+  box-shadow: 0 0 50px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+
+.left-door {
+  left: 0;
+  transform-origin: left;
+  border-radius: 0 20px 20px 0;
+}
+
+.right-door {
+  right: 0;
+  transform-origin: right;
+  border-radius: 20px 0 0 20px;
+}
+
+/* Dashboard behind doors */
+.room-view {
+  width: 100%;
+  transform-style: preserve-3d;
+  z-index: 5;
+}
+
+/* Glass UI Components */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+}
+
+.start-screen {
+  padding: 40px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.option h2 { margin-bottom: 20px; color: #fff; }
+.join-input { display: flex; gap: 12px; }
+
+.room-info {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 30px;
+  padding: 10px 20px;
+}
+
+.split-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .split-view {
+    grid-template-columns: 1fr;
+  }
+  .App {
+    padding: 10px;
+  }
+  .door {
+    height: 110%;
+  }
+}
+
+textarea {
+  width: 100%;
+  height: 200px;
+  background: rgba(0,0,0,0.2);
+  color: white;
+  border-radius: 10px;
+  padding: 10px;
+  border: none;
+}
+
+.status-badge.connected { color: #4ade80; }
+.status-badge.waiting { color: #facc15; }
