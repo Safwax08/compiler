@@ -14,6 +14,53 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  perspective: 1200px;
+  transform-style: preserve-3d;
+}
+
+/* Floating background animation container */
+.floating-bg {
+  transform-style: preserve-3d;
+}
+
+/* 3D Background Cubes */
+.3d-bg-cubes {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  transform-style: preserve-3d;
+  filter: blur(1px) opacity(0.15);
+  pointer-events: none;
+}
+
+.cube {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border: 2px solid rgba(100, 200, 255, 0.4);
+  transform-style: preserve-3d;
+  background: rgba(100, 200, 255, 0.05);
+}
+
+.cube:nth-child(1) {
+  transform: translateZ(0px) rotateX(45deg) rotateY(45deg);
+  left: 0;
+  top: 0;
+}
+
+.cube:nth-child(2) {
+  transform: translateZ(150px) rotateX(-30deg) rotateY(60deg);
+  left: 150px;
+  top: 150px;
+}
+
+.cube:nth-child(3) {
+  transform: translateZ(-150px) rotateX(60deg) rotateY(-30deg);
+  left: 300px;
+  top: 50px;
 }
 
 /* Wrapper for the door effect */
@@ -25,6 +72,7 @@
   justify-content: center;
   align-items: center;
   transform-style: preserve-3d;
+  perspective: 1500px;
 }
 
 /* Door Panels */
@@ -36,20 +84,24 @@
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border: 2px solid rgba(100, 108, 255, 0.3);
   z-index: 10;
-  box-shadow: 0 0 50px rgba(0,0,0,0.5);
+  box-shadow: 0 0 50px rgba(0,0,0,0.5), inset 0 0 30px rgba(100, 200, 255, 0.1);
   pointer-events: none;
+  transform-style: preserve-3d;
+  transition: box-shadow 0.3s ease;
 }
 
 .left-door {
   left: 0;
-  transform-origin: left;
+  transform-origin: left center;
   border-radius: 0 20px 20px 0;
+  box-shadow: 0 0 50px rgba(0,0,0,0.5), inset 0 0 30px rgba(100, 200, 255, 0.1), -20px 0 40px rgba(100, 200, 255, 0.2);
 }
 
 .right-door {
   right: 0;
-  transform-origin: right;
+  transform-origin: right center;
   border-radius: 20px 0 0 20px;
+  box-shadow: 0 0 50px rgba(0,0,0,0.5), inset 0 0 30px rgba(100, 200, 255, 0.1), 20px 0 40px rgba(100, 200, 255, 0.2);
 }
 
 /* Dashboard behind doors */
@@ -57,6 +109,7 @@
   width: 100%;
   transform-style: preserve-3d;
   z-index: 5;
+  perspective: 1200px;
 }
 
 /* Glass UI Components */
@@ -65,16 +118,38 @@
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 24px;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.320, 1);
+  transform-style: preserve-3d;
+}
+
+.glass:hover {
+  border: 1px solid rgba(100, 200, 255, 0.3);
 }
 
 .start-screen {
   padding: 40px;
   max-width: 500px;
   margin: 0 auto;
+  transform-style: preserve-3d;
 }
 
-.option h2 { margin-bottom: 20px; color: #fff; }
-.join-input { display: flex; gap: 12px; }
+.option h2 { 
+  margin-bottom: 20px; 
+  color: #fff;
+  transform-style: preserve-3d;
+}
+
+.join-input { 
+  display: flex; 
+  gap: 12px;
+  transform-style: preserve-3d;
+}
+
+.join-input input,
+.join-input button {
+  transform-style: preserve-3d;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.320, 1);
+}
 
 .room-info {
   display: flex;
@@ -82,12 +157,36 @@
   align-items: center;
   margin-bottom: 30px;
   padding: 10px 20px;
+  transform-style: preserve-3d;
 }
 
 .split-view {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 30px;
+  transform-style: preserve-3d;
+}
+
+.panel {
+  transform-style: preserve-3d;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.320, 1);
+}
+
+.panel:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(100, 200, 255, 0.4);
+}
+
+.file-list {
+  transform-style: preserve-3d;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-list > div {
+  transform-style: preserve-3d;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.320, 1);
 }
 
 /* Mobile Responsiveness */
@@ -101,6 +200,14 @@
   .door {
     height: 110%;
   }
+  .3d-bg-cubes {
+    width: 200px;
+    height: 200px;
+  }
+  .cube {
+    width: 50px;
+    height: 50px;
+  }
 }
 
 textarea {
@@ -111,6 +218,14 @@ textarea {
   border-radius: 10px;
   padding: 10px;
   border: none;
+  transform-style: preserve-3d;
+  transition: all 0.3s ease;
+}
+
+textarea:focus {
+  background: rgba(0,0,0,0.4);
+  box-shadow: 0 0 30px rgba(100, 200, 255, 0.2);
+  outline: none;
 }
 
 .status-badge.connected { color: #4ade80; }

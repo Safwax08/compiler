@@ -160,80 +160,198 @@ function App() {
         {!isJoined ? (
           <motion.div 
             key="lobby"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.2, transition: { duration: 0.8, ease: "easeInOut" } }}
+            initial={{ opacity: 1, rotateX: 0, z: 0 }}
+            exit={{ opacity: 0, scale: 1.2, rotateZ: 10, transition: { duration: 0.8, ease: "easeInOut" } }}
             className="lobby-container"
+            style={{ perspective: 1200 }}
           >
-            <header>
-              <h1>GravityShare</h1>
-              <p>Ultra-fast P2P File Transfer & Clipboard</p>
-            </header>
-            <div className="card start-screen glass">
-              <div className="option">
+            <motion.div
+              className="floating-bg"
+              animate={{
+                y: [0, -20, 0],
+                rotateX: [0, 5, 0],
+                rotateY: [0, -5, 0]
+              }}
+              transition={{
+                duration: 6,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+              style={{ perspective: 1200 }}
+            >
+              <header>
+                <motion.h1
+                  initial={{ opacity: 0, z: -100 }}
+                  animate={{ opacity: 1, z: 0 }}
+                  transition={{ duration: 0.8 }}
+                >
+                  GravityShare
+                </motion.h1>
+                <motion.p
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.2 }}
+                >
+                  Ultra-fast P2P File Transfer & Clipboard
+                </motion.p>
+              </header>
+            </motion.div>
+
+            <motion.div 
+              className="card start-screen glass"
+              initial={{ opacity: 0, rotateX: -20, y: 50 }}
+              animate={{ opacity: 1, rotateX: 0, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.3 }}
+              whileHover={{ 
+                rotateX: 5, 
+                rotateY: -5, 
+                scale: 1.02,
+                boxShadow: "0 20px 50px rgba(100, 200, 255, 0.5)"
+              }}
+              style={{ perspective: 1200 }}
+            >
+              <motion.div 
+                className="option"
+                whileHover={{ x: 10, rotateZ: 2 }}
+              >
                 <h2>Send Files</h2>
-                <button onClick={generateRoom} style={{ width: '100%' }}>Create Secure Room</button>
-              </div>
+                <motion.button 
+                  onClick={generateRoom} 
+                  style={{ width: '100%' }}
+                  whileHover={{ scale: 1.05, rotateZ: -1 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Create Secure Room
+                </motion.button>
+              </motion.div>
               <div className="divider">SECURE P2P TUNNEL</div>
-              <div className="option">
+              <motion.div 
+                className="option"
+                whileHover={{ x: -10, rotateZ: -2 }}
+              >
                 <h2>Receive Files</h2>
                 <div className="join-input">
-                  <input
+                  <motion.input
                     type="text"
                     placeholder="Enter Room ID"
                     value={inputRoomId}
                     onChange={(e) => setInputRoomId(e.target.value)}
                     style={{ flex: 1 }}
+                    whileFocus={{ scale: 1.05, rotateX: -5 }}
                   />
-                  <button onClick={joinRoom}>Join</button>
+                  <motion.button 
+                    onClick={joinRoom}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    Join
+                  </motion.button>
                 </div>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
           </motion.div>
         ) : (
-          <div key="room-transition" className="room-outer-wrapper">
-            {/* The 3D Double Doors */}
+          <div key="room-transition" className="room-outer-wrapper" style={{ perspective: 1500 }}>
+            {/* 3D Animated Background Cubes */}
+            <motion.div
+              className="3d-bg-cubes"
+              animate={{ rotateX: [0, 360], rotateY: [0, 360] }}
+              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            >
+              <div className="cube"></div>
+              <div className="cube"></div>
+              <div className="cube"></div>
+            </motion.div>
+
+            {/* The 3D Double Doors with Enhanced Effects */}
             <motion.div 
               className="door left-door"
-              initial={{ rotateY: 0 }}
-              animate={{ rotateY: -110 }}
+              initial={{ rotateY: 0, x: 0 }}
+              animate={{ rotateY: -110, x: -50 }}
               transition={{ duration: 1.2, delay: 0.2, ease: "easeInOut" }}
+              style={{ perspective: 1200 }}
             />
             <motion.div 
               className="door right-door"
-              initial={{ rotateY: 0 }}
-              animate={{ rotateY: 110 }}
+              initial={{ rotateY: 0, x: 0 }}
+              animate={{ rotateY: 110, x: 50 }}
               transition={{ duration: 1.2, delay: 0.2, ease: "easeInOut" }}
+              style={{ perspective: 1200 }}
             />
 
-            {/* The Room Content appearing from "inside" */}
+            {/* The Room Content appearing from "inside" with 3D effect */}
             <motion.div 
               className="room-view"
-              initial={{ opacity: 0, scale: 0.8, z: -500 }}
-              animate={{ opacity: 1, scale: 1, z: 0 }}
+              initial={{ opacity: 0, scale: 0.8, z: -500, rotateX: 20 }}
+              animate={{ opacity: 1, scale: 1, z: 0, rotateX: 0 }}
               transition={{ duration: 1, delay: 0.5, ease: "easeOut" }}
+              style={{ perspective: 1200 }}
             >
-              <div className="room-info glass">
-                <div className="room-id-box" onClick={() => navigator.clipboard.writeText(roomId)}>
+              <motion.div 
+                className="room-info glass"
+                whileHover={{ 
+                  rotateX: -5, 
+                  rotateY: 5, 
+                  boxShadow: "0 30px 60px rgba(100, 200, 255, 0.4)"
+                }}
+              >
+                <motion.div 
+                  className="room-id-box" 
+                  onTap={() => navigator.clipboard.writeText(roomId)}
+                  style={{ perspective: 1000 }}
+                  whileTap={{ scale: 0.95 }}
+                >
                   <span>Room: <strong>{roomId}</strong></span>
                   <Copy size={16} />
-                </div>
+                </motion.div>
                 <span className={`status-badge ${connectionState}`}>{connectionState}</span>
-              </div>
+              </motion.div>
 
               <div className="split-view">
-                <div className="panel glass">
+                <motion.div 
+                  className="panel glass"
+                  initial={{ opacity: 0, rotateX: -20, y: 50 }}
+                  animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.8 }}
+                  whileHover={{ 
+                    rotateX: 5, 
+                    rotateY: -8,
+                    boxShadow: "0 25px 50px rgba(100, 200, 255, 0.3)"
+                  }}
+                >
                   <h3>Clipboard</h3>
                   <textarea value={clipboardText} onChange={handleClipboardChange} placeholder="Type here..." />
-                </div>
-                <div className="panel glass">
+                </motion.div>
+                <motion.div 
+                  className="panel glass"
+                  initial={{ opacity: 0, rotateX: -20, y: 50 }}
+                  animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                  transition={{ duration: 0.8, delay: 1 }}
+                  whileHover={{ 
+                    rotateX: 5, 
+                    rotateY: 8,
+                    boxShadow: "0 25px 50px rgba(100, 200, 255, 0.3)"
+                  }}
+                >
                   <h3>Files</h3>
                   <DropZone onFilesSelected={handleFilesSelected} />
-                  <div className="file-list">
+                  <motion.div 
+                    className="file-list"
+                    layout
+                  >
                     {Object.entries(transfers).map(([name, stats]) => (
-                      <TransferProgress key={name} fileName={name} progress={stats.progress} />
+                      <motion.div
+                        key={name}
+                        initial={{ opacity: 0, rotateX: -10, y: 20 }}
+                        animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                        exit={{ opacity: 0, rotateX: 10, y: -20 }}
+                        whileHover={{ x: 5, rotateZ: 1 }}
+                      >
+                        <TransferProgress fileName={name} progress={stats.progress} />
+                      </motion.div>
                     ))}
-                  </div>
-                </div>
+                  </motion.div>
+                </motion.div>
               </div>
             </motion.div>
           </div>
