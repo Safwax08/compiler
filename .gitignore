@@ -1,5 +1,9 @@
-node_modules
-.env
-.DS_Store
-dist
+node_modules/
+dist/
+build/
+.env*
 *.log
+.DS_Store
+.vscode/
+.idea/
+server/public/
